@@ -5,44 +5,120 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ohrbit Studio Stream</title>
     <style>
+        /* --- RESET & BASE --- */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: 'Segoe UI', sans-serif; background: #0a0e27; color: #fff; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
-        
-        /* Header */
-        header { background: #16213e; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e94560; }
-        .logo { font-size: 18px; font-weight: bold; color: #e94560; display: flex; align-items: center; gap: 8px; }
-        .status { font-size: 12px; padding: 5px 12px; background: rgba(0,0,0,0.3); border-radius: 15px; display: flex; align-items: center; gap: 6px; }
+        body { 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            background: #0a0e27; 
+            color: #fff; 
+            overflow: hidden; 
+            height: 100dvh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .hidden { display: none !important; }
+
+        /* --- HEADER --- */
+        header { 
+            background: #16213e; 
+            padding: 10px 15px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 2px solid #e94560; 
+            flex-shrink: 0;
+        }
+        .logo { font-size: 16px; font-weight: bold; color: #e94560; display: flex; align-items: center; gap: 8px; }
+        .status { font-size: 11px; padding: 4px 10px; background: rgba(0,0,0,0.4); border-radius: 12px; display: flex; align-items: center; gap: 6px; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
         .status-dot.live { background: #e94560; box-shadow: 0 0 8px #e94560; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-        /* Main Preview Area */
-        .preview-area { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        #mainCanvas { max-width: 100%; max-height: 100%; object-fit: contain; background: #111; }
-        #hiddenVideo { display: none; } /* Vídeo oculto, usado apenas como fonte para o canvas */
-        
-        .placeholder { position: absolute; color: #666; text-align: center; padding: 20px; }
+        /* --- PREVIEW AREA (CANVAS) --- */
+        .preview-area { 
+            flex: 1; 
+            position: relative; 
+            background: #000; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            overflow: hidden; 
+            touch-action: none; /* Impede scroll ao arrastar no canvas */
+        }
+        #mainCanvas { 
+            max-width: 100%; 
+            max-height: 100%; 
+            object-fit: contain; 
+            background: #111; 
+            transition: transform 0.3s ease;
+        }
+        #hiddenVideo { display: none; }
+        .placeholder { position: absolute; color: #888; text-align: center; padding: 20px; font-size: 14px; pointer-events: none; }
 
-        /* Controls Bar (Bottom) */
-        .controls-bar { background: #16213e; padding: 10px; display: flex; gap: 8px; overflow-x: auto; border-top: 1px solid #0f3460; }
-        .btn { padding: 10px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+        /* --- CONTROLS BAR --- */
+        .controls-bar { 
+            background: #16213e; 
+            padding: 10px; 
+            display: flex; 
+            gap: 8px; 
+            overflow-x: auto; 
+            border-top: 1px solid #0f3460; 
+            flex-shrink: 0;
+        }
+        .btn { 
+            padding: 10px 14px; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 12px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            white-space: nowrap; 
+            display: flex; 
+            align-items: center; 
+            gap: 6px; 
+            transition: opacity 0.2s;
+        }
+        .btn:active { opacity: 0.7; }
         .btn-primary { background: #e94560; color: white; }
         .btn-secondary { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
         .btn-danger { background: #dc3545; color: white; }
 
-        /* Settings Panel (Collapsible) */
-        .settings-panel { background: #0f3460; padding: 15px; max-height: 40vh; overflow-y: auto; display: none; }
+        /* --- SETTINGS PANEL --- */
+        .settings-panel { 
+            background: #0f3460; 
+            padding: 15px; 
+            max-height: 45vh; 
+            overflow-y: auto; 
+            display: none; 
+            border-top: 1px solid #16213e;
+            flex-shrink: 0;
+        }
         .settings-panel.open { display: block; }
         .form-group { margin-bottom: 12px; }
-        .form-label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
-        .form-input { width: 100%; padding: 8px; background: rgba(0,0,0,0.3); border: 1px solid #16213e; border-radius: 4px; color: white; font-size: 13px; }
+        .form-label { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-input { 
+            width: 100%; 
+            padding: 10px; 
+            background: rgba(0,0,0,0.3); 
+            border: 1px solid #16213e; 
+            border-radius: 4px; 
+            color: white; 
+            font-size: 13px; 
+        }
+        .form-input:focus { outline: none; border-color: #e94560; }
         
-        /* Overlay List */
         .overlay-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-        .overlay-item { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .overlay-list-item { 
+            background: rgba(0,0,0,0.3); 
+            padding: 8px 10px; 
+            border-radius: 4px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            font-size: 12px; 
+        }
         .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
         .btn-del { background: #dc3545; color: white; }
-
         input[type="file"] { display: none; }
     </style>
 </head>
@@ -56,10 +132,10 @@
         </div>
     </header>
 
-    <div class="preview-area">
+    <div class="preview-area" id="previewArea">
         <video id="hiddenVideo" autoplay playsinline muted></video>
         <canvas id="mainCanvas"></canvas>
-        <div class="placeholder" id="placeholder">Toque em "Capturar Tela" para iniciar</div>
+        <div class="placeholder" id="placeholder">Toque em "Capturar Tela" ou adicione um Overlay para começar</div>
     </div>
 
     <div class="settings-panel" id="settingsPanel">
@@ -72,11 +148,12 @@
             <input type="password" class="form-input" id="streamKey" placeholder="Sua chave">
         </div>
         <div class="form-group">
-            <label class="form-label">Adicionar Overlay (PNG/GIF)</label>
+            <label class="form-label">Adicionar Overlay (PNG/JPG)</label>
             <label class="btn btn-secondary" style="justify-content: center; width: 100%;">
                 📁 Escolher Imagem
                 <input type="file" id="overlayInput" accept="image/*">
             </label>
+            <small style="color:#666; font-size:10px; display:block; margin-top:4px;">*GIFs animados aparecerão estáticos no canvas, use PNG com transparência.</small>
         </div>
         <div class="overlay-list" id="overlayList"></div>
     </div>
@@ -90,42 +167,86 @@
     </div>
 
     <script>
-        // Estado
+        // ==========================================
+        // 1. ESTADO DA APLICAÇÃO (Single Source of Truth)
+        // ==========================================
         const state = {
             isCapturing: false,
-            rotation: 0, // 0, 90, 180, 270
-            overlays: [], // { id, img, x, y, width, height }
+            rotation: 0, 
+            overlays: [], // { id, imgElement, name, x, y, width, height }
             stream: null,
             isDragging: false,
             dragTarget: null,
             dragOffset: { x: 0, y: 0 }
         };
 
-        // Elementos
+        // ==========================================
+        // 2. REFERÊNCIAS DOM
+        // ==========================================
         const video = document.getElementById('hiddenVideo');
         const canvas = document.getElementById('mainCanvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const placeholder = document.getElementById('placeholder');
-        
-        // Carregar configurações salvas
+        const previewArea = document.getElementById('previewArea');
+
+        // ==========================================
+        // 3. INICIALIZAÇÃO E CONFIGURAÇÕES
+        // ==========================================
+        // Resolução base do canvas (HD)
+        canvas.width = 1280;
+        canvas.height = 720;
+
         document.getElementById('rtmpUrl').value = localStorage.getItem('rtmpUrl') || '';
         document.getElementById('streamKey').value = localStorage.getItem('streamKey') || '';
 
-        // Salvar configurações ao digitar
         document.getElementById('rtmpUrl').addEventListener('input', (e) => localStorage.setItem('rtmpUrl', e.target.value));
         document.getElementById('streamKey').addEventListener('input', (e) => localStorage.setItem('streamKey', e.target.value));
 
-        // Toggle Configurações
         document.getElementById('toggleSettings').addEventListener('click', () => {
             document.getElementById('settingsPanel').classList.toggle('open');
         });
 
-        // 1. CAPTURA DE TELA
+        // ==========================================
+        // 4. ENGINE DE COMPOSIÇÃO (CANVAS LOOP)
+        // ==========================================
+        function drawCanvas() {
+            // Limpa o frame anterior
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (state.isCapturing && video.readyState >= 2) {
+                // MODO CAPTURA: Desenha o vídeo da tela/câmera
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            } else {
+                // MODO GALERIA/EDIÇÃO: Desenha fundo escuro para visualizar os overlays
+                ctx.fillStyle = "#0a0e27";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Grid sutil para ajudar no alinhamento
+                ctx.strokeStyle = "rgba(255,255,255,0.05)";
+                ctx.lineWidth = 1;
+                for(let i=0; i<canvas.width; i+=100) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+                for(let i=0; i<canvas.height; i+=100) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+            }
+
+            // Desenha TODOS os overlays por cima (seja no modo captura ou edição)
+            state.overlays.forEach(ov => {
+                ctx.drawImage(ov.imgElement, ov.x, ov.y, ov.width, ov.height);
+            });
+
+            // Solicita o próximo frame
+            requestAnimationFrame(drawCanvas);
+        }
+        
+        // Inicia o loop imediatamente
+        requestAnimationFrame(drawCanvas);
+
+        // ==========================================
+        // 5. GERENCIAMENTO DE MÍDIA
+        // ==========================================
         document.getElementById('captureBtn').addEventListener('click', async () => {
             try {
-                // No Android, 'displaySurface: "browser"' ajuda a capturar a aba sem a barra de endereços
                 const stream = await navigator.mediaDevices.getDisplayMedia({ 
-                    video: { displaySurface: "browser" }, 
+                    video: { displaySurface: "browser", width: { ideal: 1280 }, height: { ideal: 720 } }, 
                     audio: true 
                 });
                 
@@ -133,18 +254,15 @@
                 video.srcObject = stream;
                 
                 video.onloadedmetadata = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    placeholder.classList.add('hidden');
                     state.isCapturing = true;
+                    placeholder.classList.add('hidden');
                     updateButtons();
-                    drawCanvas(); // Inicia o loop de desenho
                 };
 
                 stream.getVideoTracks()[0].onended = stopCapture;
             } catch (err) {
-                alert('Erro ao capturar. Certifique-se de permitir a captura de tela/aba.');
-                console.error(err);
+                console.error("Erro na captura:", err);
+                alert('Captura cancelada ou não suportada neste navegador.');
             }
         });
 
@@ -155,7 +273,11 @@
             }
             state.isCapturing = false;
             video.srcObject = null;
-            placeholder.classList.remove('hidden');
+            
+            // Se não houver overlays, mostra o placeholder
+            if (state.overlays.length === 0) {
+                placeholder.classList.remove('hidden');
+            }
             updateButtons();
         }
 
@@ -169,18 +291,15 @@
 
         document.getElementById('stopBtn').addEventListener('click', stopCapture);
 
-        // 2. ROTAÇÃO DA TELA (Visual)
         document.getElementById('rotateBtn').addEventListener('click', () => {
             state.rotation = (state.rotation + 90) % 360;
+            // Aplica rotação visual apenas no CSS do canvas, o desenho interno permanece correto
             canvas.style.transform = `rotate(${state.rotation}deg)`;
-            // Ajuste de escala para caber na tela após rotação
-            if (state.rotation === 90 || state.rotation === 270) {
-                const scale = Math.min(canvas.parentElement.clientWidth / canvas.height, canvas.parentElement.clientHeight / canvas.width);
-                canvas.style.transform += ` scale(${scale})`;
-            }
         });
 
-        // 3. SISTEMA DE OVERLAYS E CANVAS
+        // ==========================================
+        // 6. GERENCIAMENTO DE OVERLAYS
+        // ==========================================
         document.getElementById('overlayInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -188,34 +307,35 @@
             const img = new Image();
             img.onload = () => {
                 const id = Date.now();
-                // Adiciona no centro da tela, com max 30% da largura do canvas
+                // Dimensiona para no máximo 30% da largura do canvas
                 const maxWidth = canvas.width * 0.3;
                 const scale = maxWidth / img.width;
                 
                 state.overlays.push({
                     id,
-                    img,
+                    imgElement: img,
                     name: file.name,
                     x: (canvas.width - (img.width * scale)) / 2,
                     y: (canvas.height - (img.height * scale)) / 2,
                     width: img.width * scale,
                     height: img.height * scale
                 });
-                updateOverlayList();
-                drawCanvas();
+                
+                updateOverlayListUI();
+                // Não precisa chamar drawCanvas() aqui, o requestAnimationFrame já cuida disso
             };
             img.src = URL.createObjectURL(file);
-            e.target.value = '';
+            e.target.value = ''; // Reset input
         });
 
-        function updateOverlayList() {
+        function updateOverlayListUI() {
             const list = document.getElementById('overlayList');
             list.innerHTML = '';
             state.overlays.forEach(ov => {
                 const div = document.createElement('div');
-                div.className = 'overlay-item';
+                div.className = 'overlay-list-item';
                 div.innerHTML = `
-                    <span>🖼️ ${ov.name}</span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 70%;">🖼️ ${ov.name}</span>
                     <button class="btn-sm btn-del" onclick="removeOverlay(${ov.id})">X</button>
                 `;
                 list.appendChild(div);
@@ -224,39 +344,22 @@
 
         window.removeOverlay = (id) => {
             state.overlays = state.overlays.filter(o => o.id !== id);
-            updateOverlayList();
-            drawCanvas();
+            updateOverlayListUI();
         };
 
-        // LOOP DE DESENHO NO CANVAS (O Coração do Sistema)
-        function drawCanvas() {
-            if (!state.isCapturing) return;
+        // ==========================================
+        // 7. INTERAÇÃO TOUCH (DRAG & DROP NO CANVAS)
+        // ==========================================
+        previewArea.addEventListener('touchstart', handleTouchStart, { passive: false });
+        previewArea.addEventListener('touchmove', handleTouchMove, { passive: false });
+        previewArea.addEventListener('touchend', handleTouchEnd);
 
-            // Limpa o canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Desenha o vídeo da tela
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Desenha todos os overlays por cima
-            state.overlays.forEach(ov => {
-                ctx.drawImage(ov.img, ov.x, ov.y, ov.width, ov.height);
-            });
-
-            requestAnimationFrame(drawCanvas);
-        }
-
-        // 4. ARRASTAR OVERLAYS NO CANVAS (TOUCH)
-        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-        canvas.addEventListener('touchend', handleTouchEnd);
-
-        function getTouchPos(e) {
+        function getCanvasCoordinates(e) {
             const rect = canvas.getBoundingClientRect();
-            // Ajusta a posição do toque baseada na rotação e escala do canvas
-            // (Simplificado: assume rotação 0 para arrasto inicial, pode ser refinado)
+            // Fator de escala entre o tamanho visual na tela e o tamanho real do canvas (1280x720)
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
+            
             return {
                 x: (e.touches[0].clientX - rect.left) * scaleX,
                 y: (e.touches[0].clientY - rect.top) * scaleY
@@ -264,11 +367,14 @@
         }
 
         function handleTouchStart(e) {
-            if (!state.isCapturing) return;
-            e.preventDefault();
-            const pos = getTouchPos(e);
+            // Só permite arrastar se o canvas estiver visível/ativo
+            if (state.overlays.length === 0) return;
             
-            // Verifica se tocou em algum overlay (de trás para frente, para pegar o do topo)
+            // Previne scroll da página ao tocar no canvas
+            e.preventDefault(); 
+            const pos = getCanvasCoordinates(e);
+            
+            // Verifica colisão de trás para frente (para pegar o overlay que está visualmente no topo)
             for (let i = state.overlays.length - 1; i >= 0; i--) {
                 const ov = state.overlays[i];
                 if (pos.x >= ov.x && pos.x <= ov.x + ov.width && pos.y >= ov.y && pos.y <= ov.y + ov.height) {
@@ -283,7 +389,9 @@
         function handleTouchMove(e) {
             if (!state.isDragging || !state.dragTarget) return;
             e.preventDefault();
-            const pos = getTouchPos(e);
+            const pos = getCanvasCoordinates(e);
+            
+            // Atualiza as coordenadas no ESTADO
             state.dragTarget.x = pos.x - state.dragOffset.x;
             state.dragTarget.y = pos.y - state.dragOffset.y;
         }
@@ -293,17 +401,19 @@
             state.dragTarget = null;
         }
 
-        // 5. BOTÃO AO VIVO (Simulação por enquanto)
+        // ==========================================
+        // 8. AÇÃO AO VIVO (SIMULAÇÃO FASE 1)
+        // ==========================================
         document.getElementById('liveBtn').addEventListener('click', () => {
             const url = document.getElementById('rtmpUrl').value;
             const key = document.getElementById('streamKey').value;
             if (!url || !key) {
-                alert('Preencha a URL e a Chave nas configurações primeiro!');
+                alert('Configure a URL e a Chave do Restream nas Configurações primeiro.');
                 return;
             }
             document.getElementById('statusDot').classList.add('live');
-            document.getElementById('statusText').textContent = 'AO VIVO (Simulação)';
-            alert('Preparando transmissão...\n\nNa FASE 2, isso enviará o canvas para o Render/Restream.\nPor enquanto, está apenas compondo a cena localmente com sucesso!');
+            document.getElementById('statusText').textContent = 'AO VIVO (Local)';
+            alert('Cena composta com sucesso no Canvas!\n\nPróximo passo (Fase 2): Conectar este canvas ao servidor Node.js/FFmpeg no Render para enviar ao Restream.');
         });
     </script>
 </body>
