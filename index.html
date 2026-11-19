@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ohrbit Studio Stream</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0e27; color: #fff; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        
+        /* Header */
+        header { background: #16213e; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e94560; }
+        .logo { font-size: 18px; font-weight: bold; color: #e94560; display: flex; align-items: center; gap: 8px; }
+        .status { font-size: 12px; padding: 5px 12px; background: rgba(0,0,0,0.3); border-radius: 15px; display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+        .status-dot.live { background: #e94560; box-shadow: 0 0 8px #e94560; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* Main Preview Area */
+        .preview-area { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #mainCanvas { max-width: 100%; max-height: 100%; object-fit: contain; background: #111; }
+        #hiddenVideo { display: none; } /* Vídeo oculto, usado apenas como fonte para o canvas */
+        
+        .placeholder { position: absolute; color: #666; text-align: center; padding: 20px; }
+
+        /* Controls Bar (Bottom) */
+        .controls-bar { background: #16213e; padding: 10px; display: flex; gap: 8px; overflow-x: auto; border-top: 1px solid #0f3460; }
+        .btn { padding: 10px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #e94560; color: white; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
+        .btn-danger { background: #dc3545; color: white; }
+
+        /* Settings Panel (Collapsible) */
+        .settings-panel { background: #0f3460; padding: 15px; max-height: 40vh; overflow-y: auto; display: none; }
+        .settings-panel.open { display: block; }
+        .form-group { margin-bottom: 12px; }
+        .form-label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+        .form-input { width: 100%; padding: 8px; background: rgba(0,0,0,0.3); border: 1px solid #16213e; border-radius: 4px; color: white; font-size: 13px; }
+        
+        /* Overlay List */
+        .overlay-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .overlay-item { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
+        .btn-del { background: #dc3545; color: white; }
+
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">🎬 Ohrbit Studio</div>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Pronto</span>
+        </div>
+    </header>
+
+    <div class="preview-area">
+        <video id="hiddenVideo" autoplay playsinline muted></video>
+        <canvas id="mainCanvas"></canvas>
+        <div class="placeholder" id="placeholder">Toque em "Capturar Tela" para iniciar</div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+        <div class="form-group">
+            <label class="form-label">URL do Servidor (Restream)</label>
+            <input type="text" class="form-input" id="rtmpUrl" placeholder="rtmp://..." >
+        </div>
+        <div class="form-group">
+            <label class="form-label">Chave de Transmissão</label>
+            <input type="password" class="form-input" id="streamKey" placeholder="Sua chave">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Adicionar Overlay (PNG/GIF)</label>
+            <label class="btn btn-secondary" style="justify-content: center; width: 100%;">
+                📁 Escolher Imagem
+                <input type="file" id="overlayInput" accept="image/*">
+            </label>
+        </div>
+        <div class="overlay-list" id="overlayList"></div>
+    </div>
+
+    <div class="controls-bar">
+        <button class="btn btn-secondary" id="toggleSettings">⚙️ Config</button>
+        <button class="btn btn-primary" id="captureBtn">📺 Capturar Tela</button>
+        <button class="btn btn-secondary hidden" id="rotateBtn">🔄 Girar</button>
+        <button class="btn btn-danger hidden" id="stopBtn">⏹️ Parar</button>
+        <button class="btn btn-primary hidden" id="liveBtn">🔴 AO VIVO</button>
+    </div>
+
+    <script>
+        // Estado
+        const state = {
+            isCapturing: false,
+            rotation: 0, // 0, 90, 180, 270
+            overlays: [], // { id, img, x, y, width, height }
+            stream: null,
+            isDragging: false,
+            dragTarget: null,
+            dragOffset: { x: 0, y: 0 }
+        };
+
+        // Elementos
+        const video = document.getElementById('hiddenVideo');
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const placeholder = document.getElementById('placeholder');
+        
+        // Carregar configurações salvas
+        document.getElementById('rtmpUrl').value = localStorage.getItem('rtmpUrl') || '';
+        document.getElementById('streamKey').value = localStorage.getItem('streamKey') || '';
+
+        // Salvar configurações ao digitar
+        document.getElementById('rtmpUrl').addEventListener('input', (e) => localStorage.setItem('rtmpUrl', e.target.value));
+        document.getElementById('streamKey').addEventListener('input', (e) => localStorage.setItem('streamKey', e.target.value));
+
+        // Toggle Configurações
+        document.getElementById('toggleSettings').addEventListener('click', () => {
+            document.getElementById('settingsPanel').classList.toggle('open');
+        });
+
+        // 1. CAPTURA DE TELA
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            try {
+                // No Android, 'displaySurface: "browser"' ajuda a capturar a aba sem a barra de endereços
+                const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { displaySurface: "browser" }, 
+                    audio: true 
+                });
+                
+                state.stream = stream;
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    placeholder.classList.add('hidden');
+                    state.isCapturing = true;
+                    updateButtons();
+                    drawCanvas(); // Inicia o loop de desenho
+                };
+
+                stream.getVideoTracks()[0].onended = stopCapture;
+            } catch (err) {
+                alert('Erro ao capturar. Certifique-se de permitir a captura de tela/aba.');
+                console.error(err);
+            }
+        });
+
+        function stopCapture() {
+            if (state.stream) {
+                state.stream.getTracks().forEach(t => t.stop());
+                state.stream = null;
+            }
+            state.isCapturing = false;
+            video.srcObject = null;
+            placeholder.classList.remove('hidden');
+            updateButtons();
+        }
+
+        function updateButtons() {
+            const isOn = state.isCapturing;
+            document.getElementById('captureBtn').classList.toggle('hidden', isOn);
+            document.getElementById('rotateBtn').classList.toggle('hidden', !isOn);
+            document.getElementById('stopBtn').classList.toggle('hidden', !isOn);
+            document.getElementById('liveBtn').classList.toggle('hidden', !isOn);
+        }
+
+        document.getElementById('stopBtn').addEventListener('click', stopCapture);
+
+        // 2. ROTAÇÃO DA TELA (Visual)
+        document.getElementById('rotateBtn').addEventListener('click', () => {
+            state.rotation = (state.rotation + 90) % 360;
+            canvas.style.transform = `rotate(${state.rotation}deg)`;
+            // Ajuste de escala para caber na tela após rotação
+            if (state.rotation === 90 || state.rotation === 270) {
+                const scale = Math.min(canvas.parentElement.clientWidth / canvas.height, canvas.parentElement.clientHeight / canvas.width);
+                canvas.style.transform += ` scale(${scale})`;
+            }
+        });
+
+        // 3. SISTEMA DE OVERLAYS E CANVAS
+        document.getElementById('overlayInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const img = new Image();
+            img.onload = () => {
+                const id = Date.now();
+                // Adiciona no centro da tela, com max 30% da largura do canvas
+                const maxWidth = canvas.width * 0.3;
+                const scale = maxWidth / img.width;
+                
+                state.overlays.push({
+                    id,
+                    img,
+                    name: file.name,
+                    x: (canvas.width - (img.width * scale)) / 2,
+                    y: (canvas.height - (img.height * scale)) / 2,
+                    width: img.width * scale,
+                    height: img.height * scale
+                });
+                updateOverlayList();
+                drawCanvas();
+            };
+            img.src = URL.createObjectURL(file);
+            e.target.value = '';
+        });
+
+        function updateOverlayList() {
+            const list = document.getElementById('overlayList');
+            list.innerHTML = '';
+            state.overlays.forEach(ov => {
+                const div = document.createElement('div');
+                div.className = 'overlay-item';
+                div.innerHTML = `
+                    <span>🖼️ ${ov.name}</span>
+                    <button class="btn-sm btn-del" onclick="removeOverlay(${ov.id})">X</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        window.removeOverlay = (id) => {
+            state.overlays = state.overlays.filter(o => o.id !== id);
+            updateOverlayList();
+            drawCanvas();
+        };
+
+        // LOOP DE DESENHO NO CANVAS (O Coração do Sistema)
+        function drawCanvas() {
+            if (!state.isCapturing) return;
+
+            // Limpa o canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenha o vídeo da tela
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Desenha todos os overlays por cima
+            state.overlays.forEach(ov => {
+                ctx.drawImage(ov.img, ov.x, ov.y, ov.width, ov.height);
+            });
+
+            requestAnimationFrame(drawCanvas);
+        }
+
+        // 4. ARRASTAR OVERLAYS NO CANVAS (TOUCH)
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd);
+
+        function getTouchPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // Ajusta a posição do toque baseada na rotação e escala do canvas
+            // (Simplificado: assume rotação 0 para arrasto inicial, pode ser refinado)
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.touches[0].clientX - rect.left) * scaleX,
+                y: (e.touches[0].clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleTouchStart(e) {
+            if (!state.isCapturing) return;
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            
+            // Verifica se tocou em algum overlay (de trás para frente, para pegar o do topo)
+            for (let i = state.overlays.length - 1; i >= 0; i--) {
+                const ov = state.overlays[i];
+                if (pos.x >= ov.x && pos.x <= ov.x + ov.width && pos.y >= ov.y && pos.y <= ov.y + ov.height) {
+                    state.isDragging = true;
+                    state.dragTarget = ov;
+                    state.dragOffset = { x: pos.x - ov.x, y: pos.y - ov.y };
+                    return;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            if (!state.isDragging || !state.dragTarget) return;
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            state.dragTarget.x = pos.x - state.dragOffset.x;
+            state.dragTarget.y = pos.y - state.dragOffset.y;
+        }
+
+        function handleTouchEnd() {
+            state.isDragging = false;
+            state.dragTarget = null;
+        }
+
+        // 5. BOTÃO AO VIVO (Simulação por enquanto)
+        document.getElementById('liveBtn').addEventListener('click', () => {
+            const url = document.getElementById('rtmpUrl').value;
+            const key = document.getElementById('streamKey').value;
+            if (!url || !key) {
+                alert('Preencha a URL e a Chave nas configurações primeiro!');
+                return;
+            }
+            document.getElementById('statusDot').classList.add('live');
+            document.getElementById('statusText').textContent = 'AO VIVO (Simulação)';
+            alert('Preparando transmissão...\n\nNa FASE 2, isso enviará o canvas para o Render/Restream.\nPor enquanto, está apenas compondo a cena localmente com sucesso!');
+        });
+    </script>
+</body>
+</html>
