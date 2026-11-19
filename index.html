@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ohrbit Studio Stream</title>
+    <script src="https://cdn.jsdelivr.net/npm/gifler@0.1.0/gifler.min.js"></script>
     <style>
-        /* --- RESET & BASE --- */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { 
             font-family: 'Segoe UI', system-ui, sans-serif; 
@@ -18,7 +18,6 @@
         }
         .hidden { display: none !important; }
 
-        /* --- HEADER --- */
         header { 
             background: #16213e; 
             padding: 10px 15px; 
@@ -34,7 +33,6 @@
         .status-dot.live { background: #e94560; box-shadow: 0 0 8px #e94560; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-        /* --- PREVIEW AREA (CANVAS) --- */
         .preview-area { 
             flex: 1; 
             position: relative; 
@@ -43,7 +41,7 @@
             align-items: center; 
             justify-content: center; 
             overflow: hidden; 
-            touch-action: none; /* Impede scroll ao arrastar no canvas */
+            touch-action: none;
         }
         #mainCanvas { 
             max-width: 100%; 
@@ -55,7 +53,6 @@
         #hiddenVideo { display: none; }
         .placeholder { position: absolute; color: #888; text-align: center; padding: 20px; font-size: 14px; pointer-events: none; }
 
-        /* --- CONTROLS BAR --- */
         .controls-bar { 
             background: #16213e; 
             padding: 10px; 
@@ -83,7 +80,6 @@
         .btn-secondary { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
         .btn-danger { background: #dc3545; color: white; }
 
-        /* --- SETTINGS PANEL --- */
         .settings-panel { 
             background: #0f3460; 
             padding: 15px; 
@@ -120,6 +116,19 @@
         .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
         .btn-del { background: #dc3545; color: white; }
         input[type="file"] { display: none; }
+
+        .hint { 
+            position: absolute; 
+            bottom: 10px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: rgba(0,0,0,0.7); 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            font-size: 11px; 
+            color: #aaa;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -135,7 +144,8 @@
     <div class="preview-area" id="previewArea">
         <video id="hiddenVideo" autoplay playsinline muted></video>
         <canvas id="mainCanvas"></canvas>
-        <div class="placeholder" id="placeholder">Toque em "Capturar Tela" ou adicione um Overlay para começar</div>
+        <div class="placeholder" id="placeholder">Toque em "Capturar Tela" ou adicione um Overlay</div>
+        <div class="hint" id="hint">💡 1 dedo: arrastar | 2 dedos: redimensionar</div>
     </div>
 
     <div class="settings-panel" id="settingsPanel">
@@ -148,12 +158,11 @@
             <input type="password" class="form-input" id="streamKey" placeholder="Sua chave">
         </div>
         <div class="form-group">
-            <label class="form-label">Adicionar Overlay (PNG/JPG)</label>
+            <label class="form-label">Adicionar Overlay (PNG/GIF)</label>
             <label class="btn btn-secondary" style="justify-content: center; width: 100%;">
                 📁 Escolher Imagem
                 <input type="file" id="overlayInput" accept="image/*">
             </label>
-            <small style="color:#666; font-size:10px; display:block; margin-top:4px;">*GIFs animados aparecerão estáticos no canvas, use PNG com transparência.</small>
         </div>
         <div class="overlay-list" id="overlayList"></div>
     </div>
@@ -168,16 +177,20 @@
 
     <script>
         // ==========================================
-        // 1. ESTADO DA APLICAÇÃO (Single Source of Truth)
+        // 1. ESTADO DA APLICAÇÃO
         // ==========================================
         const state = {
             isCapturing: false,
             rotation: 0, 
-            overlays: [], // { id, imgElement, name, x, y, width, height }
+            overlays: [],
             stream: null,
             isDragging: false,
             dragTarget: null,
-            dragOffset: { x: 0, y: 0 }
+            dragOffset: { x: 0, y: 0 },
+            isPinching: false,
+            pinchStartDistance: 0,
+            pinchTarget: null,
+            pinchStartScale: 1
         };
 
         // ==========================================
@@ -188,11 +201,11 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const placeholder = document.getElementById('placeholder');
         const previewArea = document.getElementById('previewArea');
+        const hint = document.getElementById('hint');
 
         // ==========================================
-        // 3. INICIALIZAÇÃO E CONFIGURAÇÕES
+        // 3. INICIALIZAÇÃO
         // ==========================================
-        // Resolução base do canvas (HD)
         canvas.width = 1280;
         canvas.height = 720;
 
@@ -206,38 +219,40 @@
             document.getElementById('settingsPanel').classList.toggle('open');
         });
 
+        // Esconder hint após 5 segundos
+        setTimeout(() => { hint.style.opacity = '0'; hint.style.transition = 'opacity 1s'; }, 5000);
+
         // ==========================================
         // 4. ENGINE DE COMPOSIÇÃO (CANVAS LOOP)
         // ==========================================
         function drawCanvas() {
-            // Limpa o frame anterior
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (state.isCapturing && video.readyState >= 2) {
-                // MODO CAPTURA: Desenha o vídeo da tela/câmera
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             } else {
-                // MODO GALERIA/EDIÇÃO: Desenha fundo escuro para visualizar os overlays
                 ctx.fillStyle = "#0a0e27";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // Grid sutil para ajudar no alinhamento
+                // Grid sutil
                 ctx.strokeStyle = "rgba(255,255,255,0.05)";
                 ctx.lineWidth = 1;
                 for(let i=0; i<canvas.width; i+=100) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
                 for(let i=0; i<canvas.height; i+=100) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
             }
 
-            // Desenha TODOS os overlays por cima (seja no modo captura ou edição)
+            // Desenha overlays
             state.overlays.forEach(ov => {
-                ctx.drawImage(ov.imgElement, ov.x, ov.y, ov.width, ov.height);
+                if (ov.isGif && ov.currentFrame) {
+                    ctx.drawImage(ov.currentFrame, ov.x, ov.y, ov.width, ov.height);
+                } else if (ov.imgElement) {
+                    ctx.drawImage(ov.imgElement, ov.x, ov.y, ov.width, ov.height);
+                }
             });
 
-            // Solicita o próximo frame
             requestAnimationFrame(drawCanvas);
         }
         
-        // Inicia o loop imediatamente
         requestAnimationFrame(drawCanvas);
 
         // ==========================================
@@ -262,7 +277,7 @@
                 stream.getVideoTracks()[0].onended = stopCapture;
             } catch (err) {
                 console.error("Erro na captura:", err);
-                alert('Captura cancelada ou não suportada neste navegador.');
+                alert('Captura cancelada ou não suportada.');
             }
         });
 
@@ -274,7 +289,6 @@
             state.isCapturing = false;
             video.srcObject = null;
             
-            // Se não houver overlays, mostra o placeholder
             if (state.overlays.length === 0) {
                 placeholder.classList.remove('hidden');
             }
@@ -293,39 +307,58 @@
 
         document.getElementById('rotateBtn').addEventListener('click', () => {
             state.rotation = (state.rotation + 90) % 360;
-            // Aplica rotação visual apenas no CSS do canvas, o desenho interno permanece correto
             canvas.style.transform = `rotate(${state.rotation}deg)`;
         });
 
         // ==========================================
-        // 6. GERENCIAMENTO DE OVERLAYS
+        // 6. GERENCIAMENTO DE OVERLAYS (COM GIF ANIMADO)
         // ==========================================
         document.getElementById('overlayInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
             
+            const isGif = file.type === 'image/gif';
             const img = new Image();
+            
             img.onload = () => {
                 const id = Date.now();
-                // Dimensiona para no máximo 30% da largura do canvas
                 const maxWidth = canvas.width * 0.3;
                 const scale = maxWidth / img.width;
                 
-                state.overlays.push({
+                const overlay = {
                     id,
                     imgElement: img,
+                    isGif: isGif,
+                    currentFrame: img,
                     name: file.name,
                     x: (canvas.width - (img.width * scale)) / 2,
                     y: (canvas.height - (img.height * scale)) / 2,
                     width: img.width * scale,
-                    height: img.height * scale
-                });
+                    height: img.height * scale,
+                    originalWidth: img.width * scale,
+                    originalHeight: img.height * scale
+                };
+
+                if (isGif) {
+                    // Carrega GIF animado com gifler
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        gifler(event.target.result).frames(canvas, (ctx, frame) => {
+                            // Atualiza o frame atual do overlay
+                            overlay.currentFrame = frame.buffer;
+                            overlay.gifWidth = frame.width;
+                            overlay.gifHeight = frame.height;
+                        });
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
                 
+                state.overlays.push(overlay);
                 updateOverlayListUI();
-                // Não precisa chamar drawCanvas() aqui, o requestAnimationFrame já cuida disso
             };
+            
             img.src = URL.createObjectURL(file);
-            e.target.value = ''; // Reset input
+            e.target.value = '';
         });
 
         function updateOverlayListUI() {
@@ -348,72 +381,118 @@
         };
 
         // ==========================================
-        // 7. INTERAÇÃO TOUCH (DRAG & DROP NO CANVAS)
+        // 7. INTERAÇÃO TOUCH (DRAG + PINCH ZOOM)
         // ==========================================
         previewArea.addEventListener('touchstart', handleTouchStart, { passive: false });
         previewArea.addEventListener('touchmove', handleTouchMove, { passive: false });
         previewArea.addEventListener('touchend', handleTouchEnd);
 
-        function getCanvasCoordinates(e) {
+        function getCanvasCoordinates(touch) {
             const rect = canvas.getBoundingClientRect();
-            // Fator de escala entre o tamanho visual na tela e o tamanho real do canvas (1280x720)
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
             
             return {
-                x: (e.touches[0].clientX - rect.left) * scaleX,
-                y: (e.touches[0].clientY - rect.top) * scaleY
+                x: (touch.clientX - rect.left) * scaleX,
+                y: (touch.clientY - rect.top) * scaleY
             };
         }
 
+        function getDistance(touch1, touch2) {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
         function handleTouchStart(e) {
-            // Só permite arrastar se o canvas estiver visível/ativo
             if (state.overlays.length === 0) return;
+            e.preventDefault();
             
-            // Previne scroll da página ao tocar no canvas
-            e.preventDefault(); 
-            const pos = getCanvasCoordinates(e);
+            const touches = e.touches;
             
-            // Verifica colisão de trás para frente (para pegar o overlay que está visualmente no topo)
-            for (let i = state.overlays.length - 1; i >= 0; i--) {
-                const ov = state.overlays[i];
-                if (pos.x >= ov.x && pos.x <= ov.x + ov.width && pos.y >= ov.y && pos.y <= ov.y + ov.height) {
-                    state.isDragging = true;
-                    state.dragTarget = ov;
-                    state.dragOffset = { x: pos.x - ov.x, y: pos.y - ov.y };
-                    return;
+            if (touches.length === 2) {
+                // PINCH ZOOM - detectar qual overlay está sendo tocado
+                const pos1 = getCanvasCoordinates(touches[0]);
+                const pos2 = getCanvasCoordinates(touches[1]);
+                const center = { x: (pos1.x + pos2.x) / 2, y: (pos1.y + pos2.y) / 2 };
+                
+                // Encontra overlay sob o centro do pinch
+                for (let i = state.overlays.length - 1; i >= 0; i--) {
+                    const ov = state.overlays[i];
+                    if (center.x >= ov.x && center.x <= ov.x + ov.width && center.y >= ov.y && center.y <= ov.y + ov.height) {
+                        state.isPinching = true;
+                        state.pinchTarget = ov;
+                        state.pinchStartDistance = getDistance(touches[0], touches[1]);
+                        state.pinchStartScale = ov.width / ov.originalWidth;
+                        return;
+                    }
+                }
+            } else if (touches.length === 1) {
+                // DRAG - um dedo
+                const pos = getCanvasCoordinates(touches[0]);
+                
+                for (let i = state.overlays.length - 1; i >= 0; i--) {
+                    const ov = state.overlays[i];
+                    if (pos.x >= ov.x && pos.x <= ov.x + ov.width && pos.y >= ov.y && pos.y <= ov.y + ov.height) {
+                        state.isDragging = true;
+                        state.dragTarget = ov;
+                        state.dragOffset = { x: pos.x - ov.x, y: pos.y - ov.y };
+                        return;
+                    }
                 }
             }
         }
 
         function handleTouchMove(e) {
-            if (!state.isDragging || !state.dragTarget) return;
             e.preventDefault();
-            const pos = getCanvasCoordinates(e);
+            const touches = e.touches;
             
-            // Atualiza as coordenadas no ESTADO
-            state.dragTarget.x = pos.x - state.dragOffset.x;
-            state.dragTarget.y = pos.y - state.dragOffset.y;
+            if (state.isPinching && state.pinchTarget && touches.length === 2) {
+                // Calcula nova escala baseada na distância dos dedos
+                const currentDistance = getDistance(touches[0], touches[1]);
+                const scale = (currentDistance / state.pinchStartDistance) * state.pinchStartScale;
+                
+                // Limita escala entre 0.3x e 3x
+                const clampedScale = Math.max(0.3, Math.min(3, scale));
+                
+                // Mantém o centro do overlay no mesmo lugar
+                const centerX = state.pinchTarget.x + state.pinchTarget.width / 2;
+                const centerY = state.pinchTarget.y + state.pinchTarget.height / 2;
+                
+                state.pinchTarget.width = state.pinchTarget.originalWidth * clampedScale;
+                state.pinchTarget.height = state.pinchTarget.originalHeight * clampedScale;
+                state.pinchTarget.x = centerX - state.pinchTarget.width / 2;
+                state.pinchTarget.y = centerY - state.pinchTarget.height / 2;
+                
+            } else if (state.isDragging && state.dragTarget && touches.length === 1) {
+                const pos = getCanvasCoordinates(touches[0]);
+                state.dragTarget.x = pos.x - state.dragOffset.x;
+                state.dragTarget.y = pos.y - state.dragOffset.y;
+            }
         }
 
-        function handleTouchEnd() {
-            state.isDragging = false;
-            state.dragTarget = null;
+        function handleTouchEnd(e) {
+            if (e.touches.length === 0) {
+                state.isDragging = false;
+                state.dragTarget = null;
+                state.isPinching = false;
+                state.pinchTarget = null;
+            }
         }
 
         // ==========================================
-        // 8. AÇÃO AO VIVO (SIMULAÇÃO FASE 1)
+        // 8. AÇÃO AO VIVO (SIMULAÇÃO)
         // ==========================================
         document.getElementById('liveBtn').addEventListener('click', () => {
             const url = document.getElementById('rtmpUrl').value;
             const key = document.getElementById('streamKey').value;
             if (!url || !key) {
-                alert('Configure a URL e a Chave do Restream nas Configurações primeiro.');
+                alert('Configure URL e Chave nas Configurações.');
                 return;
             }
             document.getElementById('statusDot').classList.add('live');
             document.getElementById('statusText').textContent = 'AO VIVO (Local)';
-            alert('Cena composta com sucesso no Canvas!\n\nPróximo passo (Fase 2): Conectar este canvas ao servidor Node.js/FFmpeg no Render para enviar ao Restream.');
+            alert('Cena composta com sucesso!\n\nPróximo passo: Conectar ao Render/Restream.');
         });
     </script>
 </body>
